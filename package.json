@@ -6,7 +6,7 @@
   "homepage": "https://e8xjp6.github.io/IronLog-Pro",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npx vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
