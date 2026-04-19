@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { EQUIPMENT_OPTIONS, MUSCLE_GROUPS, MOVEMENT_LIBRARY } from '../data/exerciseData';
-import { Dumbbell, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ExerciseNameBuilderProps {
   initialName: string;

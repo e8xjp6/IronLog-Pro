@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { ExercisePlan, SetRecord, SetType } from '../types';
 import { Plus, Check, Trash2, Calculator, Dumbbell, Percent } from 'lucide-react';
+import { TIMER_DURATIONS } from '../constants';
+import { generateId } from '../lib/utils';
 
 interface ExerciseCardProps {
   exercise: ExercisePlan;
@@ -30,7 +32,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, onUpdate, onGener
     if (isNaN(weight) || isNaN(reps)) return;
 
     const newSet: SetRecord = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: generateId(),
       type: newSetType,
       weight,
       reps,
@@ -81,12 +83,12 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, onUpdate, onGener
     if (isNowCompleted) {
       let duration = 0;
       if (targetSet.type === SetType.WARMUP) {
-        duration = 60;
+        duration = TIMER_DURATIONS.WARMUP;
       } else if (targetSet.type === SetType.WORKING) {
         if (targetSet.reps <= 5) {
-          duration = 180;
+          duration = TIMER_DURATIONS.WORKING_HEAVY;
         } else {
-          duration = 90;
+          duration = TIMER_DURATIONS.WORKING_NORMAL;
         }
       }
       
@@ -169,7 +171,7 @@ const ExerciseCard: React.FC<ExerciseCardProps> = ({ exercise, onUpdate, onGener
           </div>
         )}
 
-        {exercise.sets.map((set, index) => {
+        {exercise.sets.map((set) => {
           const setPct = calculatePercentage(set.weight, exercise.currentPR);
           // Calculate set number relative to its type
           const setNumber = exercise.sets.filter(s => s.type === set.type).indexOf(set) + 1;

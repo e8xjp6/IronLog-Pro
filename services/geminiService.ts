@@ -4,9 +4,9 @@ import { SetRecord, SetType } from "../types";
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const generateWarmupSets = async (
-  exerciseName: string,
+  _exerciseName: string,
   targetWeight: number,
-  currentPR: number
+  _currentPR: number
 ): Promise<SetRecord[]> => {
   // Simulate a small delay for better UX (feeling of calculation)
   await new Promise((resolve) => setTimeout(resolve, 400));

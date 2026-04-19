@@ -1,27 +1,32 @@
 {
   "name": "ironlog-pro",
+  "description": "Professional weight training tracker with AI coaching and energy system.",
+  "author": "e8xjp6@gmail.com",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "homepage": "https://e8xjp6.github.io/IronLog-Pro",
   "scripts": {
     "dev": "vite",
-    "build": "npx vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "lucide-react": "^0.344.0"
+    "lucide-react": "^0.561.0",
+    "motion": "^12.4.7",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
-    "@types/react": "^18.2.64",
-    "@types/react-dom": "^18.2.21",
-    "@vitejs/plugin-react": "^4.2.1",
-    "typescript": "^5.2.2",
-    "vite": "^5.1.6",
-    "gh-pages": "^6.1.1"
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.58.1",
+    "@typescript-eslint/parser": "^8.58.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.1"
   }
 }
