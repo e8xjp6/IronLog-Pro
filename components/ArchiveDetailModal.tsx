@@ -1,23 +1,26 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, Zap, CheckCircle2, Moon, Sun, Timer } from 'lucide-react';
+import { X, Calendar, Zap, CheckCircle2, Moon, Sun, Timer, Trash2 } from 'lucide-react';
 import { ArchiveEntry } from '../types';
 
 interface ArchiveDetailModalProps {
   entry: ArchiveEntry | null;
   onClose: () => void;
   onUpdate?: (entry: ArchiveEntry) => void;
+  onDelete?: (id: string) => void;
 }
 
-const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose, onUpdate }) => {
+const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose, onUpdate, onDelete }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [editDate, setEditDate] = useState('');
   const [editStart, setEditStart] = useState('');
   const [editEnd, setEditEnd] = useState('');
 
   // Sync edit state when entry changes
   React.useEffect(() => {
     if (entry) {
+      setEditDate(entry.date);
       setEditStart(toInputTime(entry.sleep_data.start));
       setEditEnd(toInputTime(entry.sleep_data.end));
     }
@@ -25,6 +28,15 @@ const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose,
   }, [entry]);
 
   if (!entry) return null;
+
+  const formatDisplayDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      return d.toLocaleDateString('zh-TW', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+    } catch {
+      return dateStr;
+    }
+  };
 
   const formatTime = (ts: number | null) => {
     if (!ts) return '--:--';
@@ -40,25 +52,45 @@ const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose,
   const handleSaveEdit = () => {
     if (!entry || !onUpdate) return;
 
-    const updateTimestamp = (originalTs: number, timeStr: string) => {
+    const createTimestamp = (dateStr: string, timeStr: string, dayOffset = 0) => {
       const [hours, minutes] = timeStr.split(':').map(Number);
-      const newDate = new Date(originalTs);
-      newDate.setHours(hours);
-      newDate.setMinutes(minutes);
-      return newDate.getTime();
+      // Use YYYY-MM-DD for constructor to avoid timezone issues with local time
+      const [y, m, d] = dateStr.split('-').map(Number);
+      const date = new Date(y, m - 1, d, hours, minutes, 0, 0);
+      if (dayOffset !== 0) {
+        date.setDate(date.getDate() + dayOffset);
+      }
+      return date.getTime();
     };
+
+    const newStart = createTimestamp(editDate, editStart);
+    let newEnd = entry.sleep_data.end ? createTimestamp(editDate, editEnd) : null;
+
+    // Span midnight logic: if end time is numerically less than start time, it likely moved to next day
+    if (newEnd && newEnd < newStart) {
+      newEnd = createTimestamp(editDate, editEnd, 1);
+    }
 
     const updatedEntry: ArchiveEntry = {
       ...entry,
+      date: editDate,
       sleep_data: {
         ...entry.sleep_data,
-        start: updateTimestamp(entry.sleep_data.start, editStart),
-        end: entry.sleep_data.end ? updateTimestamp(entry.sleep_data.end, editEnd) : null
+        start: newStart,
+        end: newEnd
       }
     };
 
     onUpdate(updatedEntry);
     setIsEditing(false);
+  };
+
+  const handleDelete = () => {
+    if (!entry || !onDelete) return;
+    if (confirm('確定要永久刪除這份記憶碎片嗎？此操作無法復原。')) {
+      onDelete(entry.id);
+      onClose();
+    }
   };
 
   const calculateDuration = (start: number, end: number | null) => {
@@ -95,7 +127,21 @@ const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose,
             {/* Header */}
             <div className="p-6 border-b border-slate-800 flex justify-between items-center">
               <div>
-                <h3 className="text-xl font-bold text-white">{entry.date}</h3>
+                <h3 className="text-xl font-bold text-white">
+                  {isEditing ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">日期修正</span>
+                      <input 
+                        type="date"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        className="bg-slate-950 border border-slate-800 rounded-lg p-2 text-sm text-white focus:outline-none focus:border-orange-500"
+                      />
+                    </div>
+                  ) : (
+                    formatDisplayDate(entry.date)
+                  )}
+                </h3>
               </div>
               <div className="flex gap-2">
                 {onUpdate && !isEditing && (
@@ -103,7 +149,7 @@ const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose,
                     onClick={() => setIsEditing(true)}
                     className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-orange-500 border border-orange-500/30 rounded-full hover:bg-orange-500/10 transition-colors"
                   >
-                    編輯時間
+                    編輯紀錄
                   </button>
                 )}
                 <button 
@@ -157,19 +203,29 @@ const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose,
               </div>
 
               {isEditing && (
-                <div className="flex gap-3">
-                  <button 
-                    onClick={handleSaveEdit}
-                    className="flex-1 py-3 bg-orange-500 text-white font-black italic rounded-2xl hover:bg-orange-400 transition-colors"
-                  >
-                    儲存變更
-                  </button>
-                  <button 
-                    onClick={() => setIsEditing(false)}
-                    className="flex-1 py-3 bg-slate-800 text-slate-300 font-black italic rounded-2xl hover:bg-slate-700 transition-colors"
-                  >
-                    取消
-                  </button>
+                <div className="space-y-3">
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={handleSaveEdit}
+                      className="flex-1 py-3 bg-orange-500 text-white font-black italic rounded-2xl hover:bg-orange-400 transition-colors"
+                    >
+                      儲存變更
+                    </button>
+                    <button 
+                      onClick={() => setIsEditing(false)}
+                      className="flex-1 py-3 bg-slate-800 text-slate-300 font-black italic rounded-2xl hover:bg-slate-700 transition-colors"
+                    >
+                      取消
+                    </button>
+                  </div>
+                  {onDelete && (
+                    <button 
+                      onClick={handleDelete}
+                      className="w-full py-3 flex items-center justify-center gap-2 text-red-500 font-bold hover:bg-red-500/10 rounded-2xl transition-colors border border-red-500/20"
+                    >
+                      <Trash2 className="w-4 h-4" /> 刪除這份記憶
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -216,10 +272,10 @@ const ArchiveDetailModal: React.FC<ArchiveDetailModalProps> = ({ entry, onClose,
                 <Zap className="w-4 h-4 text-orange-500" />
                 <span className="text-xs text-slate-400">初始能量: {entry.sleep_data.initial_energy}%</span>
               </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-slate-500" />
-                <span className="text-xs text-slate-500">{entry.date}</span>
-              </div>
+                <div className="flex gap-2">
+                  <Calendar className="w-4 h-4 text-slate-500" />
+                  <span className="text-xs text-slate-500">{entry.date}</span>
+                </div>
             </div>
           </motion.div>
         </div>

@@ -9,14 +9,16 @@ const DEFAULT_WATER_DATA: WaterData = {
     proteinMode: false,
     primaryContainerMl: 500,
     presets: [
-      { label: '一杯水', ml: 250, type: 'cup' },
-      { label: '一瓶水', ml: 500, type: 'bottle' },
-      { label: '大容量', ml: 800, type: 'glass' }
+      { label: '鋁箔包', ml: 300, type: 'cup' },
+      { label: '常用水壺', ml: 600, type: 'bottle' },
+      { label: '寶特瓶', ml: 500, type: 'bottle' }
     ]
   }
 };
 
 export const useWater = () => {
+  const getTodayStr = () => new Date().toLocaleDateString('en-CA');
+
   const [waterData, setWaterData] = useState<WaterData>(() => {
     const saved = localStorage.getItem('water_data');
     return saved ? JSON.parse(saved) : DEFAULT_WATER_DATA;
@@ -31,7 +33,7 @@ export const useWater = () => {
   };
 
   const handleAddWaterLog = (entry: WaterLogEntry) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayStr();
     const currentLogs = waterData.dailyLogs[todayStr] || [];
     setWaterData({
       ...waterData,
@@ -43,7 +45,7 @@ export const useWater = () => {
   };
 
   const handleUndoWaterLog = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayStr();
     const currentLogs = waterData.dailyLogs[todayStr] || [];
     if (currentLogs.length === 0) return;
     
@@ -57,7 +59,7 @@ export const useWater = () => {
   };
 
   const handleDeleteWaterLog = (id: string) => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getTodayStr();
     const currentLogs = waterData.dailyLogs[todayStr] || [];
     setWaterData({
       ...waterData,
@@ -68,7 +70,7 @@ export const useWater = () => {
     });
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getTodayStr();
   const todayLogs = waterData.dailyLogs[todayStr] || [];
   const todayHydration = todayLogs.reduce((sum, log) => sum + log.ml, 0);
 

@@ -61,7 +61,7 @@ const App: React.FC = () => {
     handleDeleteWaterLog: handleDeleteWaterLogHook
   } = useWater();
 
-  const { archiveGallery, setArchiveGallery, handleAddArchive, handleUpdateArchive } = useArchive();
+  const { archiveGallery, setArchiveGallery, handleAddArchive, handleUpdateArchive, handleDeleteArchive } = useArchive();
   const { energy, setEnergy } = useEnergy();
   const { restTimer, handleStartTimer, handleStopTimer, handleAddTimerSeconds } = useTimer();
 
@@ -74,9 +74,16 @@ const App: React.FC = () => {
 
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
   
+  const getLocalDateString = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Dashboard & Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newSessionDate, setNewSessionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newSessionDate, setNewSessionDate] = useState(getLocalDateString(new Date()));
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   
   // File Input Ref for Import
@@ -92,6 +99,48 @@ const App: React.FC = () => {
         setSelectedTemplateId('');
     }
   }, [templates, selectedTemplateId]);
+
+  // Sync energy with the formula: (Yesterday's Sleep Score) + (Today's Water Bonus)
+  useEffect(() => {
+    const now = new Date();
+    const todayStr = getLocalDateString(now);
+    
+    const yesterdayDate = new Date(now);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayStr = getLocalDateString(yesterdayDate);
+
+    // Find the ritual in Archive Gallery that started yesterday and is completed
+    const yesterdayRitual = [...archiveGallery]
+      .filter(h => h.date === yesterdayStr && h.sleep_data.end)
+      .sort((a, b) => b.sleep_data.start - a.sleep_data.start)[0];
+    
+    let sleepScore = 0;
+    if (yesterdayRitual) {
+      const durationMs = yesterdayRitual.sleep_data.end! - yesterdayRitual.sleep_data.start;
+      const hours = durationMs / (1000 * 60 * 60);
+      sleepScore = Math.min(100, (hours / sleepSettings.targetDurationHours) * 100);
+    }
+
+    const hasWorkoutToday = sessions.some(s => s.date === todayStr && s.isCompleted);
+    const waterTarget = waterData.settings.weight * ENERGY_CALCULATION.WATER_MULTIPLIER + 
+      (waterData.settings.proteinMode ? ENERGY_CALCULATION.PROTEIN_BONUS : 0) + 
+      (hasWorkoutToday ? ENERGY_CALCULATION.WORKOUT_BONUS : 0);
+    
+    const waterRatio = waterTarget > 0 ? Math.min(1, todayHydration / waterTarget) : 0;
+    const waterBonus = waterRatio * ENERGY_CALCULATION.MAX_WATER_BONUS_SCORE;
+
+    const totalEnergy = Math.round(sleepScore + waterBonus);
+
+    setEnergy((prev: any) => {
+      // Avoid infinite loops by only updating if there's a meaningful difference
+      if (prev.current === totalEnergy && prev.initial === totalEnergy) return prev;
+      return {
+        ...prev,
+        current: totalEnergy,
+        initial: totalEnergy
+      };
+    });
+  }, [archiveGallery, todayHydration, sleepSettings.targetDurationHours, waterData.settings, sessions, setEnergy]);
 
   const upcomingSessions = sessions
     .filter(s => !s.isCompleted)
@@ -115,7 +164,7 @@ const App: React.FC = () => {
       sleepHistory,
       archiveGallery,
       energy,
-      exportDate: new Date().toISOString(),
+      exportDate: getLocalDateString(new Date()),
       appVersion: '1.0'
     };
     
@@ -123,7 +172,7 @@ const App: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `ironlog_backup_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `ironlog_backup_${getLocalDateString(new Date())}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -168,8 +217,9 @@ const App: React.FC = () => {
   // --- Sleep Sealer Logic ---
 
   const handleSeal = (log: SleepLog) => {
-    const now = Date.now();
-    const todayStr = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const timestamp = now.getTime();
+    const todayStr = getLocalDateString(now);
 
     handleSealMemoryHook(todayStr, log);
 
@@ -178,10 +228,10 @@ const App: React.FC = () => {
     const crystalOpacity = Math.min(CRYSTAL_SETTINGS.OPACITY_MAX, CRYSTAL_SETTINGS.OPACITY_BASE + (todayHydration / CRYSTAL_SETTINGS.HYDRATION_DIVISOR) * 0.5); // Clearer if hydrated
 
     const archiveEntry: ArchiveEntry = {
-      id: `crystal_${now}`,
+      id: `crystal_${timestamp}`,
       date: todayStr,
       sleep_data: {
-        start: now, // This is the seal start
+        start: timestamp, // This is the seal start
         end: null,  // Will be wake time
         initial_energy: energy.current
       },
@@ -224,34 +274,6 @@ const App: React.FC = () => {
         return entry;
       }));
 
-      // Calculate energy recovery based on sleep duration and hydration
-      const durationMs = now - lastEntry.sealTimestamp;
-      const hours = durationMs / (1000 * 60 * 60);
-      
-      // 1. Sleep Ratio (capped at 100%)
-      const sleepRatio = Math.min(100, (hours / sleepSettings.targetDurationHours) * 100);
-      
-      // 2. Water Bonus (based on the day the ritual started)
-      const ritualStartDate = lastEntry.date;
-      const ritualStartHydration = (waterData.dailyLogs[ritualStartDate] || []).reduce((sum, log) => sum + log.ml, 0);
-      
-      const hadWorkoutThatDay = sessions.some(s => s.date === ritualStartDate && s.isCompleted);
-      const waterTarget = waterData.settings.weight * ENERGY_CALCULATION.WATER_MULTIPLIER + (waterData.settings.proteinMode ? ENERGY_CALCULATION.PROTEIN_BONUS : 0) + (hadWorkoutThatDay ? ENERGY_CALCULATION.WORKOUT_BONUS : 0);
-      
-      const waterRatio = waterTarget > 0 ? Math.min(1, ritualStartHydration / waterTarget) : 0;
-      const waterBonus = waterRatio * ENERGY_CALCULATION.MAX_WATER_BONUS_SCORE;
-      
-      const totalEnergy = Math.round(sleepRatio + waterBonus);
-      
-      setEnergy((prev: any) => {
-        const newState = {
-          ...prev,
-          current: totalEnergy,
-          initial: totalEnergy
-        };
-        return newState;
-      });
-
       setShowWakeFeedback(true);
       setTimeout(() => setShowWakeFeedback(false), 3000);
     }
@@ -263,40 +285,23 @@ const App: React.FC = () => {
 
   const handleAddWaterLog = (entry: WaterLogEntry) => {
     handleAddWaterLogHook(entry);
-    
-    // Also update energy calculation
-    setEnergy((prev: any) => ({
-      ...prev,
-      current: Math.min(prev.max, prev.current + (entry.ml / 500) * 10)
-    }));
   };
 
   const handleUndoWater = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = new Date().toLocaleDateString('en-CA');
     const todayLogs = waterData.dailyLogs[todayStr] || [];
     if (todayLogs.length === 0) return;
 
-    const lastLog = todayLogs[todayLogs.length - 1];
     handleUndoWaterLogHook();
-
-    setEnergy((prev: any) => ({
-      ...prev,
-      current: Math.max(0, prev.current - (lastLog.ml / 500) * 10)
-    }));
   };
 
-  const handleDeleteWaterLog = (id: string) => {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todayLogs = waterData.dailyLogs[todayStr] || [];
-    const logToDelete = todayLogs.find(l => l.id === id);
+  const handleDeleteWaterLog = (id: string, dateStr?: string) => {
+    const targetDate = dateStr || new Date().toLocaleDateString('en-CA');
+    const logs = waterData.dailyLogs[targetDate] || [];
+    const logToDelete = logs.find(l => l.id === id);
     if (!logToDelete) return;
 
     handleDeleteWaterLogHook(id);
-
-    setEnergy((prev: any) => ({
-      ...prev,
-      current: Math.max(0, prev.current - (logToDelete.ml / 500) * 10)
-    }));
   };
 
   // --- Session Management ---
@@ -518,7 +523,17 @@ const App: React.FC = () => {
       {view === 'completed-workouts' && <CompletedWorkoutsView setView={setView} sessions={sessions} />}
       {view === 'backup' && <BackupView setView={setView} handleExportData={handleExportData} handleImportData={handleImportData} fileInputRef={fileInputRef} />}
       {view === 'ritual-settings' && <RitualSettingsView setView={setView} sleepSettings={sleepSettings} setSleepSettings={setSleepSettings} />}
-      {view === 'energy-detail' && <EnergyDetailView setView={setView} sleepHistory={sleepHistory} sleepSettings={sleepSettings} waterData={waterData} sessions={sessions} energy={energy} />}
+      {view === 'energy-detail' && (
+        <EnergyDetailView 
+          setView={setView} 
+          archiveGallery={archiveGallery} 
+          sleepSettings={sleepSettings} 
+          waterData={waterData} 
+          todayHydration={todayHydration}
+          sessions={sessions} 
+          energy={energy} 
+        />
+      )}
       {view === 'water' && (
         <WaterModule 
           data={waterData}
@@ -527,7 +542,7 @@ const App: React.FC = () => {
           onUndo={handleUndoWater}
           onDeleteLog={handleDeleteWaterLog}
           onBack={() => setView('dashboard')}
-          hasWorkoutToday={sessions.some(s => s.date === new Date().toISOString().split('T')[0] && s.isCompleted)}
+          hasWorkoutToday={sessions.some(s => s.date === new Date().toLocaleDateString('en-CA') && s.isCompleted)}
         />
       )}
       {view === 'sleep-sealer' && (
@@ -549,6 +564,7 @@ const App: React.FC = () => {
         entry={selectedArchiveEntry}
         onClose={() => setSelectedArchiveEntry(null)}
         onUpdate={handleUpdateArchive}
+        onDelete={handleDeleteArchive}
       />
 
       {/* Sealing Animation Overlay */}

@@ -62,7 +62,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({
   archiveGallery,
   onEntryClick
 }) => {
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = new Date().toLocaleDateString('en-CA');
   const waterGoal = waterData.settings.weight * 35 + 
     (waterData.settings.proteinMode ? 500 : 0) + 
     (sessions.some(s => s.date === todayStr && s.isCompleted) ? 800 : 0);

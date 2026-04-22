@@ -20,10 +20,15 @@ export const useArchive = () => {
     setArchiveGallery(prev => prev.map(entry => entry.id === updatedEntry.id ? updatedEntry : entry));
   };
 
+  const handleDeleteArchive = (id: string) => {
+    setArchiveGallery(prev => prev.filter(entry => entry.id !== id));
+  };
+
   return {
     archiveGallery,
     setArchiveGallery,
     handleAddArchive,
-    handleUpdateArchive
+    handleUpdateArchive,
+    handleDeleteArchive
   };
 };

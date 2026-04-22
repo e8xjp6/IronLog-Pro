@@ -1,43 +1,65 @@
 import React from 'react';
 import { ArrowLeft, Timer, Droplets } from 'lucide-react';
-import { ViewMode, SleepHistoryEntry, SleepSettings, WaterData, WorkoutSession, EnergyState } from '../types';
+import { ViewMode, ArchiveEntry, SleepSettings, WaterData, WorkoutSession, EnergyState } from '../types';
 import { ENERGY_CALCULATION } from '../constants';
 
 interface EnergyDetailViewProps {
   setView: (view: ViewMode) => void;
-  sleepHistory: SleepHistoryEntry[];
+  archiveGallery: ArchiveEntry[];
   sleepSettings: SleepSettings;
   waterData: WaterData;
+  todayHydration: number;
   sessions: WorkoutSession[];
   energy: EnergyState;
 }
 
-const EnergyDetailView: React.FC<EnergyDetailViewProps> = ({ setView, sleepHistory, sleepSettings, waterData, sessions, energy }) => {
-  const lastCompletedSleep = [...sleepHistory]
-    .filter(h => h.wakeTimestamp)
-    .sort((a, b) => b.wakeTimestamp! - a.wakeTimestamp!)[0];
+const EnergyDetailView: React.FC<EnergyDetailViewProps> = ({ 
+  setView, 
+  archiveGallery, 
+  sleepSettings, 
+  waterData, 
+  todayHydration,
+  sessions, 
+  energy 
+}) => {
+  const getLocalDateString = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const now = new Date();
+  const todayStr = getLocalDateString(now);
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yesterdayDate);
+
+  // Find the ritual that STARTED yesterday and is completed
+  const yesterdayRitual = [...archiveGallery]
+    .filter(h => h.date === yesterdayStr && h.sleep_data.end)
+    .sort((a, b) => b.sleep_data.start - a.sleep_data.start)[0];
 
   let sleepAchievement = 0;
   let sleepDuration = 0;
-  let waterAchievement = 0;
-  let waterBonus = 0;
-  let waterIntake = 0;
-  let waterTarget = 0;
-
-  if (lastCompletedSleep) {
-    const durationMs = lastCompletedSleep.wakeTimestamp! - lastCompletedSleep.sealTimestamp;
+  
+  if (yesterdayRitual) {
+    const durationMs = yesterdayRitual.sleep_data.end! - yesterdayRitual.sleep_data.start;
     sleepDuration = durationMs / (1000 * 60 * 60);
     sleepAchievement = Math.min(100, (sleepDuration / sleepSettings.targetDurationHours) * 100);
-
-    const ritualStartDate = lastCompletedSleep.date;
-    waterIntake = (waterData.dailyLogs[ritualStartDate] || []).reduce((sum, log) => sum + log.ml, 0);
-    const hadWorkoutThatDay = sessions.some(s => s.date === ritualStartDate && s.isCompleted);
-    waterTarget = waterData.settings.weight * ENERGY_CALCULATION.WATER_MULTIPLIER + (waterData.settings.proteinMode ? ENERGY_CALCULATION.PROTEIN_BONUS : 0) + (hadWorkoutThatDay ? ENERGY_CALCULATION.WORKOUT_BONUS : 0);
-    
-    const waterRatio = waterTarget > 0 ? Math.min(1, waterIntake / waterTarget) : 0;
-    waterAchievement = waterRatio * 100;
-    waterBonus = waterRatio * ENERGY_CALCULATION.MAX_WATER_BONUS_SCORE;
   }
+
+  const hasWorkoutToday = sessions.some(s => s.date === todayStr && s.isCompleted);
+  
+  // Use the same todayHydration from props
+  const waterIntake = todayHydration;
+  const waterTarget = waterData.settings.weight * ENERGY_CALCULATION.WATER_MULTIPLIER + 
+    (waterData.settings.proteinMode ? ENERGY_CALCULATION.PROTEIN_BONUS : 0) + 
+    (hasWorkoutToday ? ENERGY_CALCULATION.WORKOUT_BONUS : 0);
+  
+  const waterRatio = waterTarget > 0 ? Math.min(1, waterIntake / waterTarget) : 0;
+  const waterAchievement = waterRatio * 100;
+  const waterBonus = waterRatio * ENERGY_CALCULATION.MAX_WATER_BONUS_SCORE;
 
   return (
     <div className="min-h-screen bg-dark flex flex-col">

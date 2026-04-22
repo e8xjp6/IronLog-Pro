@@ -12,7 +12,7 @@ interface WaterModuleProps {
   onUpdateSettings: (settings: WaterData['settings']) => void;
   onAddLog: (entry: WaterLogEntry) => void;
   onUndo: () => void;
-  onDeleteLog: (id: string) => void;
+  onDeleteLog: (id: string, dateStr?: string) => void;
   onBack: () => void;
   hasWorkoutToday: boolean;
 }
@@ -29,8 +29,12 @@ const WaterModule: React.FC<WaterModuleProps> = ({
   const [showHistory, setShowHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const logs = data.dailyLogs[todayStr] || [];
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  
+  const todayLogs = data.dailyLogs[todayStr] || [];
 
   // Calculation Logic
   const { totalMlGoal, totalSlots } = useMemo(() => {
@@ -40,23 +44,37 @@ const WaterModule: React.FC<WaterModuleProps> = ({
     const totalMl = gBase + gProtein + gWorkout;
     return {
       totalMlGoal: totalMl,
-      totalSlots: Math.round(totalMl / data.settings.primaryContainerMl)
+      totalSlots: Math.max(1, Math.round(totalMl / data.settings.primaryContainerMl))
     };
   }, [data.settings, hasWorkoutToday]);
 
-  const currentTotalMl = useMemo(() => logs.reduce((sum, log) => sum + log.ml, 0), [logs]);
+  const currentTotalMl = useMemo(() => todayLogs.reduce((sum, log) => sum + log.ml, 0), [todayLogs]);
   const isGoalMet = currentTotalMl >= totalMlGoal;
   const filledCount = Math.floor(currentTotalMl / data.settings.primaryContainerMl);
 
   const handleAdd = (preset: typeof data.settings.presets[0]) => {
+    const now = new Date();
     const newEntry: WaterLogEntry = {
       id: generateId(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       ml: preset.ml,
       type: preset.type
     };
     onAddLog(newEntry);
   };
+
+  const handleUpdatePreset = (index: number, field: 'label' | 'ml', value: string | number) => {
+    const newPresets = [...data.settings.presets];
+    newPresets[index] = { ...newPresets[index], [field]: value };
+    onUpdateSettings({ ...data.settings, presets: newPresets });
+  };
+
+  // Flatten logs for history view to see more than just today
+  const allHistoryLogs = useMemo(() => {
+    return Object.entries(data.dailyLogs)
+      .flatMap(([date, logs]) => logs.map(l => ({ ...l, date })))
+      .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
+  }, [data.dailyLogs]);
 
   return (
     <div className="min-h-screen bg-dark text-slate-200 p-6 flex flex-col pb-32">
@@ -69,7 +87,7 @@ const WaterModule: React.FC<WaterModuleProps> = ({
           <h1 className="text-2xl font-black italic tracking-tighter text-white">
             BIO<span className="text-blue-400">REPAIR</span>
           </h1>
-          <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">生化修復模組</p>
+          <p className="text-[10px] text-slate-500 uppercase tracking-[0.2em]">生理修復模組</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowSettings(true)} className="p-2 text-slate-400 hover:text-white bg-slate-800/50 rounded-full">
@@ -90,7 +108,7 @@ const WaterModule: React.FC<WaterModuleProps> = ({
         </motion.div>
         <div className="text-xs text-slate-500 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
           <Droplets className="w-3 h-3 text-blue-400" />
-          {isGoalMet ? '生理修復已達標' : `目標: ${totalMlGoal}ml`}
+          {isGoalMet ? '生理修復已達標' : `今日目標: ${totalMlGoal}ml`}
         </div>
       </div>
 
@@ -140,7 +158,7 @@ const WaterModule: React.FC<WaterModuleProps> = ({
           <div className="flex justify-between items-center mb-6">
             <button 
               onClick={onUndo}
-              disabled={logs.length === 0}
+              disabled={todayLogs.length === 0}
               className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-300 disabled:opacity-30 transition-opacity"
             >
               <RotateCcw className="w-4 h-4" /> 一鍵撤回
@@ -149,7 +167,7 @@ const WaterModule: React.FC<WaterModuleProps> = ({
               onClick={() => setShowHistory(!showHistory)}
               className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-300 transition-opacity"
             >
-              <History className="w-4 h-4" /> 時間軸
+              <History className="w-4 h-4" /> 歷史時間軸
             </button>
           </div>
 
@@ -162,8 +180,9 @@ const WaterModule: React.FC<WaterModuleProps> = ({
                 className="bg-slate-800/80 border border-slate-700 p-4 rounded-2xl flex flex-col items-center gap-2 hover:bg-slate-700 transition-colors group"
               >
                 <BottleIcon type={preset.type} className="w-8 h-8 text-slate-400 group-hover:text-blue-400 transition-colors" />
-                <div className="text-[10px] font-black text-slate-500 group-hover:text-slate-300 uppercase tracking-tighter">
+                <div className="text-[10px] font-black text-slate-500 group-hover:text-slate-300 uppercase tracking-tighter text-center">
                   {preset.label}
+                  <div className="opacity-60">{preset.ml}ml</div>
                 </div>
               </motion.button>
             ))}
@@ -181,27 +200,30 @@ const WaterModule: React.FC<WaterModuleProps> = ({
             className="fixed inset-0 z-50 bg-dark/95 backdrop-blur-md p-6 flex flex-col"
           >
             <div className="flex justify-between items-center mb-8">
-              <h2 className="text-xl font-black italic text-white">REPAIR LOGS</h2>
+              <h2 className="text-xl font-black italic text-white">REPAIR HISTORY</h2>
               <button onClick={() => setShowHistory(false)} className="p-2 text-slate-400">
                 <ArrowLeft className="w-6 h-6 rotate-90" />
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar">
-              {logs.length === 0 ? (
-                <div className="text-center py-20 text-slate-600 italic text-sm">今日尚無修復紀錄</div>
+            <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar pb-10">
+              {allHistoryLogs.length === 0 ? (
+                <div className="text-center py-20 text-slate-600 italic text-sm">尚無任何修復紀錄</div>
               ) : (
-                [...logs].reverse().map((log) => (
+                allHistoryLogs.map((log) => (
                   <div key={log.id} className="bg-slate-900/50 border border-slate-800 p-4 rounded-2xl flex justify-between items-center">
                     <div className="flex items-center gap-4">
                       <BottleIcon type={log.type} className="w-8 h-8" />
                       <div>
                         <div className="text-sm font-bold text-white">{log.ml}ml</div>
-                        <div className="text-[10px] text-slate-500 uppercase">{log.time}</div>
+                        <div className="text-[10px] text-slate-500 uppercase flex gap-2">
+                          <span className={log.date === todayStr ? 'text-blue-400 font-bold' : ''}>{log.date}</span>
+                          <span>{log.time}</span>
+                        </div>
                       </div>
                     </div>
                     <button 
-                      onClick={() => onDeleteLog(log.id)}
+                      onClick={() => onDeleteLog(log.id, log.date)}
                       className="text-slate-600 hover:text-red-400 text-xs font-bold"
                     >
                       刪除
@@ -221,7 +243,7 @@ const WaterModule: React.FC<WaterModuleProps> = ({
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-50 bg-dark/95 backdrop-blur-md p-6 flex flex-col"
+            className="fixed inset-0 z-50 bg-dark/95 backdrop-blur-md p-6 flex flex-col overflow-y-auto no-scrollbar"
           >
             <div className="flex justify-between items-center mb-8">
               <h2 className="text-xl font-black italic text-white">BIO CONFIG</h2>
@@ -230,7 +252,7 @@ const WaterModule: React.FC<WaterModuleProps> = ({
               </button>
             </div>
             
-            <div className="space-y-8">
+            <div className="space-y-8 pb-10">
               <div>
                 <label className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-2 block">體重 (kg)</label>
                 <input 
@@ -255,19 +277,43 @@ const WaterModule: React.FC<WaterModuleProps> = ({
               </div>
 
               <div>
-                <label className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-2 block">慣用容器容量 (ml)</label>
+                <label className="text-xs text-slate-500 font-bold uppercase tracking-widest mb-2 block">滿瓶視覺單位 (ml)</label>
                 <input 
                   type="number"
                   value={data.settings.primaryContainerMl}
-                  onChange={(e) => onUpdateSettings({ ...data.settings, primaryContainerMl: parseInt(e.target.value) || 1 })}
+                  onChange={(e) => onUpdateSettings({ ...data.settings, primaryContainerMl: Math.max(1, parseInt(e.target.value) || 1) })}
                   className="w-full bg-slate-900 border border-slate-800 rounded-xl p-4 text-white font-bold focus:outline-none focus:border-blue-500"
                 />
+              </div>
+
+              <div className="space-y-4">
+                <label className="text-xs text-slate-500 font-bold uppercase tracking-widest block">快捷按鈕配置</label>
+                {data.settings.presets.map((preset, i) => (
+                  <div key={i} className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
+                    <div className="flex gap-2">
+                       <input 
+                        type="text"
+                        value={preset.label}
+                        onChange={(e) => handleUpdatePreset(i, 'label', e.target.value)}
+                        placeholder="名稱"
+                        className="flex-1 bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none"
+                      />
+                       <input 
+                        type="number"
+                        value={preset.ml}
+                        onChange={(e) => handleUpdatePreset(i, 'ml', parseInt(e.target.value) || 0)}
+                        placeholder="ml"
+                        className="w-24 bg-slate-800 border border-slate-700 rounded-lg p-2 text-xs text-white focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
             <button 
               onClick={() => setShowSettings(false)}
-              className="mt-auto w-full bg-blue-500 text-white font-black italic py-4 rounded-2xl shadow-lg shadow-blue-900/20"
+              className="mt-6 w-full bg-blue-500 text-white font-black italic py-4 rounded-2xl shadow-lg shadow-blue-900/20"
             >
               儲存配置
             </button>
